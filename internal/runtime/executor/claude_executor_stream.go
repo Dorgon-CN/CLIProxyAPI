@@ -174,6 +174,9 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	if cpaOwnsCacheControl {
 		ensureCacheControlDoc(doc)
 	}
+	if confirmedClaudeCode && !cpaOwnsCacheControl && !isExplicitPromptCacheModeDoc(doc, originalPayload, req.Payload) {
+		patchNativeMissingMessageCacheControlDoc(doc)
+	}
 
 	// Enforce Anthropic's cache_control block limit (max 4 breakpoints per request).
 	// Cloaking and ensureCacheControl may push the total over 4 when the client
