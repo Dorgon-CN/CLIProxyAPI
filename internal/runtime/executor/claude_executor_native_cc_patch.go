@@ -62,3 +62,39 @@ func patchNativeMissingMessageCacheControlDoc(doc *ojson.Doc) bool {
 	}
 	return changed
 }
+
+// LOCAL PATCH (2026-11-09): after a manual /compact, Claude Code 2.1.319 can
+// send a role:system message whose content is an empty array (it only carries
+// a per-message output_config). Some upstream relays reject the whole request
+// with 429 "Service Unavailable". Drop system messages that have no content.
+func dropEmptySystemMessagesDoc(doc *ojson.Doc) bool {
+	if doc == nil || doc.Len() == 0 {
+		return false
+	}
+	messages := doc.Get("messages")
+	if !messages.IsArray() {
+		return false
+	}
+	msgs := messages.Array()
+	changed := false
+	for i := len(msgs) - 1; i >= 0; i-- {
+		msg := msgs[i]
+		if msg.Get("role").String() != "system" {
+			continue
+		}
+		content := msg.Get("content")
+		empty := !content.Exists() ||
+			(content.IsArray() && len(content.Array()) == 0) ||
+			(content.Type == ojson.String && strings.TrimSpace(content.String()) == "")
+		if !empty {
+			continue
+		}
+		if err := doc.Delete(fmt.Sprintf("messages.%d", i)); err == nil {
+			changed = true
+		}
+	}
+	if changed {
+		log.Debugf("local patch: dropped empty system message(s) from Claude request")
+	}
+	return changed
+}
